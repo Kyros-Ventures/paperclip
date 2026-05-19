@@ -218,6 +218,93 @@ describeEmbeddedPostgres("authorization service", () => {
     expect(decision.explanation).toContain("simple mode");
   });
 
+  it("denies simple-mode assignment when the target agent requires protected-assignment approval", async () => {
+    const company = await createCompany(db, "ProtectedAssignment");
+    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
+    const targetAgent = await createAgent(db, company.id, {
+      role: "engineer",
+      permissions: {
+        authorizationPolicy: {
+          assignmentPolicy: {
+            mode: "protected",
+            protectedAgentRequiresApproval: true,
+          },
+          protectedAgent: {
+            requiresApproval: true,
+            approvalReason: "Production deployment authority",
+          },
+          managedBy: "paperclip-ee-permissions",
+        },
+      },
+    });
+
+    const decision = await authorizationService(db).decide({
+      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      action: "tasks:assign",
+      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      scope: { assigneeAgentId: targetAgent.id },
+    });
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      reason: "deny_policy_restricted",
+    });
+    expect(decision.explanation).toContain("requires approval");
+  });
+
+  it("requires an explicit grant before assigning to a private target agent", async () => {
+    const company = await createCompany(db, "PrivateAssignment");
+    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
+    const targetAgent = await createAgent(db, company.id, {
+      role: "engineer",
+      permissions: {
+        authorizationPolicy: {
+          agentVisibility: {
+            mode: "private",
+            hiddenFromDefaultDirectory: true,
+          },
+          assignmentPolicy: {
+            mode: "company_default",
+            protectedAgentRequiresApproval: false,
+          },
+          protectedAgent: {
+            requiresApproval: false,
+          },
+          managedBy: "paperclip-ee-permissions",
+        },
+      },
+    });
+
+    const denied = await authorizationService(db).decide({
+      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      action: "tasks:assign",
+      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      scope: { assigneeAgentId: targetAgent.id },
+    });
+
+    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign_scope", {
+      assigneeAgentId: targetAgent.id,
+    });
+
+    const allowed = await authorizationService(db).decide({
+      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      action: "tasks:assign",
+      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      scope: { assigneeAgentId: targetAgent.id },
+    });
+
+    expect(denied).toMatchObject({
+      allowed: false,
+      reason: "deny_policy_restricted",
+    });
+    expect(denied.explanation).toContain("private");
+    expect(allowed).toMatchObject({
+      allowed: true,
+      reason: "allow_explicit_grant",
+      grant: { permissionKey: "tasks:assign_scope" },
+    });
+  });
+
   it("allows simple-mode task assignment for active same-company board operators without explicit grants", async () => {
     const company = await createCompany(db, "BoardAssignmentDefault");
     const userId = `user-${randomUUID()}`;

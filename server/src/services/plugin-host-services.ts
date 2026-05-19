@@ -2443,7 +2443,9 @@ export function buildHostServices(
           action: "tasks:assign",
           resource: { type: "issue", companyId, ...params.target },
           scope: {
+            issueId: params.target.issueId ?? null,
             projectId: params.target.projectId ?? null,
+            parentIssueId: params.target.parentIssueId ?? null,
             assigneeAgentId: params.target.assigneeAgentId ?? null,
             assigneeUserId: params.target.assigneeUserId ?? null,
           },
@@ -2457,7 +2459,9 @@ export function buildHostServices(
           action: "tasks:assign",
           resource: { type: "issue", companyId, ...params.target },
           scope: {
+            issueId: params.target.issueId ?? null,
             projectId: params.target.projectId ?? null,
+            parentIssueId: params.target.parentIssueId ?? null,
             assigneeAgentId: params.target.assigneeAgentId ?? null,
             assigneeUserId: params.target.assigneeUserId ?? null,
           },

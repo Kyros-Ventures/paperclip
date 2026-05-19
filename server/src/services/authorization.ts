@@ -4,7 +4,9 @@ import {
   agents,
   companyMemberships,
   instanceUserRoles,
+  issues,
   principalPermissionGrants,
+  projects,
 } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
 
@@ -64,6 +66,7 @@ export type AuthorizationDecision = {
     | "deny_company_boundary"
     | "deny_missing_membership"
     | "deny_missing_grant"
+    | "deny_policy_restricted"
     | "deny_scope"
     | "deny_unsupported_action";
   grant?: {
@@ -119,6 +122,104 @@ function scopeIncludesId(ids: string[], id: string | null | undefined) {
 
 function isSimpleAssignableAgentStatus(status: string | null | undefined) {
   return status !== "pending_approval" && status !== "terminated";
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function objectIsEmpty(value: Record<string, unknown>) {
+  return Object.keys(value).length === 0;
+}
+
+function readPolicyObject(container: unknown, key: string): Record<string, unknown> | null {
+  if (!isPlainRecord(container)) return null;
+  const value = container[key];
+  return isPlainRecord(value) ? value : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+type AssignmentPolicyEffect =
+  | { kind: "none" }
+  | { kind: "restricted"; explanation: string }
+  | { kind: "requires_approval"; explanation: string }
+  | { kind: "unknown"; explanation: string };
+
+function evaluateAuthorizationPolicyForAssignment(
+  policy: Record<string, unknown> | null | undefined,
+  label: string,
+): AssignmentPolicyEffect {
+  if (!policy || objectIsEmpty(policy)) return { kind: "none" };
+
+  const agentVisibility = readPolicyObject(policy, "agentVisibility");
+  const assignmentPolicy = readPolicyObject(policy, "assignmentPolicy");
+  const protectedAgent = readPolicyObject(policy, "protectedAgent");
+  const knownTopLevelKeys = new Set([
+    "agentVisibility",
+    "assignmentPolicy",
+    "protectedAgent",
+    "managedBy",
+  ]);
+  const hasUnknownTopLevelKey = Object.keys(policy).some((key) => !knownTopLevelKeys.has(key));
+  const hasKnownPolicySection = Boolean(agentVisibility || assignmentPolicy || protectedAgent);
+  if (hasUnknownTopLevelKey || !hasKnownPolicySection) {
+    return {
+      kind: "unknown",
+      explanation: `${label} has authorization policy data that core cannot evaluate for task assignment.`,
+    };
+  }
+
+  const visibilityMode = readString(agentVisibility?.mode);
+  if (visibilityMode && visibilityMode !== "discoverable" && visibilityMode !== "private") {
+    return {
+      kind: "unknown",
+      explanation: `${label} has an unsupported agent visibility policy mode.`,
+    };
+  }
+
+  const assignmentMode = readString(assignmentPolicy?.mode);
+  if (assignmentMode && assignmentMode !== "company_default" && assignmentMode !== "protected") {
+    return {
+      kind: "unknown",
+      explanation: `${label} has an unsupported assignment policy mode.`,
+    };
+  }
+
+  const requiresApproval =
+    readBoolean(protectedAgent?.requiresApproval) === true ||
+    readBoolean(assignmentPolicy?.protectedAgentRequiresApproval) === true;
+  if (requiresApproval) {
+    return {
+      kind: "requires_approval",
+      explanation: `${label} requires approval before task assignment.`,
+    };
+  }
+
+  if (
+    visibilityMode === "private" ||
+    readBoolean(agentVisibility?.hiddenFromDefaultDirectory) === true
+  ) {
+    return {
+      kind: "restricted",
+      explanation: `${label} is private and cannot use simple company-wide task assignment.`,
+    };
+  }
+
+  if (assignmentMode === "protected") {
+    return {
+      kind: "restricted",
+      explanation: `${label} is protected and requires an explicit assignment grant.`,
+    };
+  }
+
+  return { kind: "none" };
 }
 
 async function isAgentInSubtree(db: Db, companyId: string, rootAgentId: string, targetAgentId: string) {
@@ -348,6 +449,24 @@ export function authorizationService(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
+  async function loadProjectAuthorizationPolicy(companyId: string, projectId: string) {
+    const row = await db
+      .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+    return readPolicyObject(row?.executionWorkspacePolicy, "authorizationPolicy");
+  }
+
+  async function loadIssueAuthorizationPolicy(companyId: string, issueId: string) {
+    const row = await db
+      .select({ executionPolicy: issues.executionPolicy })
+      .from(issues)
+      .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+    return readPolicyObject(row?.executionPolicy, "authorizationPolicy");
+  }
+
   async function assignmentTargetIsInCompany(resource: AuthorizationResource) {
     if (resource.type !== "issue") return true;
     if (resource.assigneeAgentId) {
@@ -362,6 +481,52 @@ export function authorizationService(db: Db) {
       return Boolean(await getActiveMembership(resource.companyId, "user", resource.assigneeUserId));
     }
     return true;
+  }
+
+  async function assignmentPolicyEffect(resource: AuthorizationResource): Promise<AssignmentPolicyEffect> {
+    if (resource.type !== "issue") return { kind: "none" };
+
+    const checks: Array<Promise<AssignmentPolicyEffect>> = [];
+    if (resource.assigneeAgentId) {
+      checks.push(
+        loadAgent(resource.assigneeAgentId).then((agent) =>
+          evaluateAuthorizationPolicyForAssignment(
+            readPolicyObject(agent?.permissions, "authorizationPolicy"),
+            "Target agent",
+          ),
+        ),
+      );
+    }
+    if (resource.projectId) {
+      checks.push(
+        loadProjectAuthorizationPolicy(resource.companyId, resource.projectId).then((policy) =>
+          evaluateAuthorizationPolicyForAssignment(policy, "Target project"),
+        ),
+      );
+    }
+    if (resource.issueId) {
+      checks.push(
+        loadIssueAuthorizationPolicy(resource.companyId, resource.issueId).then((policy) =>
+          evaluateAuthorizationPolicyForAssignment(policy, "Target issue"),
+        ),
+      );
+    }
+    if (resource.parentIssueId && resource.parentIssueId !== resource.issueId) {
+      checks.push(
+        loadIssueAuthorizationPolicy(resource.companyId, resource.parentIssueId).then((policy) =>
+          evaluateAuthorizationPolicyForAssignment(policy, "Parent issue"),
+        ),
+      );
+    }
+    if (checks.length === 0) return { kind: "none" };
+
+    const effects = await Promise.all(checks);
+    return (
+      effects.find((effect) => effect.kind === "unknown") ??
+      effects.find((effect) => effect.kind === "requires_approval") ??
+      effects.find((effect) => effect.kind === "restricted") ??
+      { kind: "none" }
+    );
   }
 
   async function isManagerOf(companyId: string, managerAgentId: string, assigneeAgentId: string) {
@@ -415,6 +580,28 @@ export function authorizationService(db: Db) {
       return broadDecision;
     }
 
+    async function denyForAssignmentPolicyIfNeeded(
+      policyEffect: AssignmentPolicyEffect,
+    ): Promise<AuthorizationDecision | null> {
+      if (policyEffect.kind === "none" || policyEffect.kind === "restricted") return null;
+      return deny({
+        action: input.action,
+        reason: "deny_policy_restricted",
+        explanation: policyEffect.explanation,
+      });
+    }
+
+    function denyRestrictedAssignmentPolicy(policyEffect: AssignmentPolicyEffect): AuthorizationDecision {
+      return deny({
+        action: input.action,
+        reason: "deny_policy_restricted",
+        explanation:
+          policyEffect.kind === "restricted"
+            ? policyEffect.explanation
+            : "Restrictive authorization policy blocks simple company-wide task assignment.",
+      });
+    }
+
     if (input.actor.type === "none") {
       return deny({
         action: input.action,
@@ -453,15 +640,18 @@ export function authorizationService(db: Db) {
             explanation: "Task assignment target agent is not active in the target company.",
           });
         }
+        const policyEffect = await assignmentPolicyEffect(input.resource);
+        const policyDeny = await denyForAssignmentPolicyIfNeeded(policyEffect);
+        if (policyDeny) return policyDeny;
         const membership = await getActiveMembership(companyId, "user", input.actor.userId);
-        if (membership && membership.membershipRole !== "viewer") {
+        if (policyEffect.kind === "none" && membership && membership.membershipRole !== "viewer") {
           return allow({
             action: input.action,
             reason: "allow_simple_company_member",
             explanation: "Allowed by simple mode company-wide task assignment default.",
           });
         }
-        if (!input.actor.memberships && input.actor.companyIds?.includes(companyId)) {
+        if (policyEffect.kind === "none" && !input.actor.memberships && input.actor.companyIds?.includes(companyId)) {
           return allow({
             action: input.action,
             reason: "allow_simple_company_member",
@@ -477,7 +667,11 @@ export function authorizationService(db: Db) {
         });
       }
       if (input.action === "tasks:assign") {
-        return decideWithTaskAssignmentGrants("user", input.actor.userId);
+        const grantDecision = await decideWithTaskAssignmentGrants("user", input.actor.userId);
+        if (grantDecision.allowed) return grantDecision;
+        const policyEffect = await assignmentPolicyEffect(input.resource);
+        if (policyEffect.kind === "restricted") return denyRestrictedAssignmentPolicy(policyEffect);
+        return grantDecision;
       }
       return decidePrincipalGrant({
         companyId,
@@ -528,6 +722,14 @@ export function authorizationService(db: Db) {
           reason: "deny_company_boundary",
           explanation: "Task assignment target agent is not active in the target company.",
         });
+      }
+      const policyEffect = await assignmentPolicyEffect(input.resource);
+      const policyDeny = await denyForAssignmentPolicyIfNeeded(policyEffect);
+      if (policyDeny) return policyDeny;
+      if (policyEffect.kind === "restricted") {
+        const grantDecision = await decideWithTaskAssignmentGrants("agent", actorAgentId);
+        if (grantDecision.allowed) return grantDecision;
+        return denyRestrictedAssignmentPolicy(policyEffect);
       }
       return allow({
         action: input.action,

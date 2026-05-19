@@ -1253,6 +1253,7 @@ export function issueRoutes(
   }
 
   type TaskAssignmentAuthorizationScope = {
+    issueId?: string | null;
     projectId?: string | null;
     parentIssueId?: string | null;
     assigneeAgentId?: string | null;
@@ -1285,6 +1286,7 @@ export function issueRoutes(
         resource: {
           type: "issue",
           companyId,
+          issueId: assignmentScope?.issueId ?? null,
           projectId: assignmentScope?.projectId ?? null,
           parentIssueId: assignmentScope?.parentIssueId ?? null,
           assigneeAgentId: assignmentScope?.assigneeAgentId ?? null,
@@ -3698,6 +3700,7 @@ export function issueRoutes(
     if (assigneeWillChange && !transition.workflowControlledAssignment) {
       if (!isAgentReturningIssueToCreator) {
         await assertCanAssignTasks(req, existing.companyId, {
+          issueId: existing.id,
           projectId: await resolveAssignmentProjectId({
             companyId: existing.companyId,
             projectId: updateFields.projectId === undefined
@@ -4484,6 +4487,7 @@ export function issueRoutes(
 
     if (issue.assigneeAgentId !== req.body.agentId) {
       await assertCanAssignTasks(req, issue.companyId, {
+        issueId: issue.id,
         projectId: issue.projectId ?? null,
         parentIssueId: issue.parentId ?? null,
         assigneeAgentId: req.body.agentId,

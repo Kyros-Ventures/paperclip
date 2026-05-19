@@ -17,6 +17,7 @@ import {
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
+const pluginId = "plugin-record-id";
 
 function createEventBusStub() {
   return {
@@ -78,7 +79,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
       })
       .returning()
       .then((rows) => rows[0]!);
-    const services = buildHostServices(db, "plugin-record-id", "paperclip-ee", createEventBusStub());
+    const services = buildHostServices(db, pluginId, "paperclip-ee", createEventBusStub());
 
     await expect(
       services.authorization.setGrants({
@@ -96,7 +97,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
 
   it("redacts invite token hashes and sensitive defaults from plugin invite reads", async () => {
     const company = await createCompany(db, "PAZ");
-    const services = buildHostServices(db, "plugin-record-id", "paperclip-ee", createEventBusStub());
+    const services = buildHostServices(db, pluginId, "paperclip-ee", createEventBusStub());
 
     const created = await services.access.createInvite({
       companyId: company.id,
@@ -123,7 +124,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
 
   it("filters authorization audit entries by allow or deny decision details", async () => {
     const company = await createCompany(db, "PAU");
-    const services = buildHostServices(db, "plugin-record-id", "paperclip-ee", createEventBusStub());
+    const services = buildHostServices(db, pluginId, "paperclip-ee", createEventBusStub());
     await db.insert(activityLog).values([
       {
         companyId: company.id,
@@ -145,22 +146,99 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
       },
     ]);
 
-    const allowed = await services.authorization.searchAudit({
-      companyId: company.id,
-      action: "authorization.assignment_preview",
-      decision: "allow",
-    });
-    const denied = await services.authorization.searchAudit({
-      companyId: company.id,
-      action: "authorization.assignment_preview",
-      decision: "deny",
-    });
+    const [allowed, denied] = await Promise.all([
+      services.authorization.searchAudit({
+        companyId: company.id,
+        action: "authorization.assignment_preview",
+        decision: "allow",
+      }),
+      services.authorization.searchAudit({
+        companyId: company.id,
+        action: "authorization.assignment_preview",
+        decision: "deny",
+      }),
+    ]);
 
     expect(allowed).toHaveLength(1);
     expect(allowed[0]!.entityId).toBe("issue-1");
     expect(allowed[0]!.details).toMatchObject({ decision: "allow", secret: "***REDACTED***" });
     expect(denied).toHaveLength(1);
     expect(denied[0]!.entityId).toBe("issue-2");
+    services.dispose();
+  });
+
+  it("uses persisted agent policy for plugin assignment preview and explanation", async () => {
+    const company = await createCompany(db, "PAP");
+    const [actorAgent, targetAgent] = await db
+      .insert(agents)
+      .values([
+        {
+          companyId: company.id,
+          name: "Actor agent",
+          role: "engineer",
+          adapterType: "process",
+          adapterConfig: {},
+          permissions: {},
+        },
+        {
+          companyId: company.id,
+          name: "Protected target",
+          role: "engineer",
+          adapterType: "process",
+          adapterConfig: {},
+          permissions: {},
+        },
+      ])
+      .returning();
+    await db.insert(companyMemberships).values({
+      companyId: company.id,
+      principalType: "agent",
+      principalId: actorAgent!.id,
+      status: "active",
+      membershipRole: "member",
+    });
+
+    const services = buildHostServices(db, pluginId, "paperclip-ee", createEventBusStub());
+    const updatedPolicy = await services.authorization.updatePolicy({
+      companyId: company.id,
+      resourceType: "agent",
+      resourceId: targetAgent!.id,
+      policy: {
+        assignmentPolicy: {
+          mode: "protected",
+          protectedAgentRequiresApproval: true,
+        },
+        protectedAgent: {
+          requiresApproval: true,
+          approvalReason: "Needs board approval",
+        },
+        managedBy: "paperclip-ee-permissions",
+      },
+    });
+    const input = {
+      companyId: company.id,
+      actor: {
+        type: "agent" as const,
+        agentId: actorAgent!.id,
+        companyId: company.id,
+        source: "agent_key" as const,
+      },
+      target: { assigneeAgentId: targetAgent!.id },
+    };
+    const [policy, preview, explanation] = await Promise.all([
+      Promise.resolve(updatedPolicy),
+      services.authorization.previewAssignment(input),
+      services.authorization.explainAssignment(input),
+    ]);
+
+    expect(policy.policy).toMatchObject({
+      protectedAgent: { requiresApproval: true },
+    });
+    expect(preview).toMatchObject({
+      allowed: false,
+      reason: "deny_policy_restricted",
+    });
+    expect(explanation).toMatchObject(preview);
     services.dispose();
   });
 });

@@ -274,6 +274,7 @@ describe("agent issue mutation checkout ownership", () => {
     vi.doUnmock("../middleware/index.js");
     registerRouteMocks();
     vi.clearAllMocks();
+    delete (mockAccessService as any).decide;
     mockAccessService.canUser.mockReset();
     mockAccessService.hasPermission.mockReset();
     mockAgentService.getById.mockReset();
@@ -827,5 +828,38 @@ describe("agent issue mutation checkout ownership", () => {
         }),
       }),
     );
+  });
+
+  it("uses the authorization decision path for assignment changes", async () => {
+    const decide = vi.fn(async () => ({
+      allowed: false,
+      action: "tasks:assign",
+      reason: "deny_policy_restricted",
+      explanation: "Target agent requires approval before task assignment.",
+    }));
+    (mockAccessService as any).decide = decide;
+    mockIssueService.getById.mockResolvedValue(makeIssue({ assigneeAgentId: ownerAgentId }));
+    mockAgentService.resolveByReference.mockResolvedValue({
+      ambiguous: false,
+      agent: makeAgent(peerAgentId),
+    });
+
+    const app = await createApp(ownerActor());
+    const res = await request(app)
+      .patch(`/api/issues/${issueId}`)
+      .send({ assigneeAgentId: peerAgentId });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("requires approval");
+    expect(decide).toHaveBeenCalledWith(expect.objectContaining({
+      action: "tasks:assign",
+      resource: expect.objectContaining({
+        type: "issue",
+        companyId,
+        issueId,
+        assigneeAgentId: peerAgentId,
+      }),
+    }));
+    expect(mockIssueService.update).not.toHaveBeenCalled();
   });
 });
