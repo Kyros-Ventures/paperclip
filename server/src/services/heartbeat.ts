@@ -5842,6 +5842,47 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     };
   }
 
+  function parseSelfHealingConfig(agent: typeof agents.$inferSelect) {
+    const runtimeConfig = parseObject(agent.runtimeConfig);
+    const heartbeat = parseObject(runtimeConfig.heartbeat);
+    const selfHealing = parseObject(heartbeat.selfHealing);
+
+    return {
+      enabled: asBoolean(selfHealing.enabled, true),
+      maxRetries: Math.max(0, Math.min(10, asNumber(selfHealing.maxRetries, 3))),
+      retryDelaySec: Math.max(60, asNumber(selfHealing.retryDelaySec, 300)),
+      escalateToRole: (typeof selfHealing.escalateToRole === "string" ? selfHealing.escalateToRole : "ceo") as string,
+    };
+  }
+
+  async function attemptAgentSelfHeal(
+    agent: typeof agents.$inferSelect,
+    now: Date,
+  ): Promise<{ restarted: boolean; escalated: boolean; reason: string }> {
+    const config = parseSelfHealingConfig(agent);
+    if (!config.enabled) return { restarted: false, escalated: false, reason: "self_healing_disabled" };
+
+    const metadata = parseObject(agent.metadata) as Record<string, unknown>;
+    const healing = parseObject(metadata.selfHealing) as Record<string, unknown>;
+    const errorCount = asNumber(healing.errorCount, 0);
+    const lastErrorAt = typeof healing.lastErrorAt === "string" ? healing.lastErrorAt : null;
+
+    // Check retry delay: don't restart too quickly
+    if (lastErrorAt) {
+      const lastError = new Date(lastErrorAt);
+      const msSinceError = now.getTime() - lastError.getTime();
+      if (msSinceError < config.retryDelaySec * 1000) {
+        return { restarted: false, escalated: false, reason: `retry_delay_not_met (${Math.round(msSinceError / 1000)}s < ${config.retryDelaySec}s)` };
+      }
+    }
+
+    if (errorCount >= config.maxRetries) {
+      return { restarted: false, escalated: true, reason: `max_retries_exceeded (${errorCount}/${config.maxRetries})` };
+    }
+
+    return { restarted: true, escalated: false, reason: `retry_${errorCount + 1}_of_${config.maxRetries}` };
+  }
+
   function parseMaxTurnContinuationPolicy(agent: typeof agents.$inferSelect): MaxTurnContinuationPolicy {
     const runtimeConfig = parseObject(agent.runtimeConfig);
     const heartbeat = parseObject(runtimeConfig.heartbeat);
@@ -9904,6 +9945,156 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }
 
       const issueMonitors = await tickDueIssueMonitors(now);
+
+      // --- Agent Self-Healing: auto-restart error agents ---
+      let selfHealed = 0;
+      let selfHealEscalated = 0;
+      for (const agent of allAgents) {
+        if (agent.status !== "error") continue;
+
+        const healingResult = await attemptAgentSelfHeal(agent, now);
+        if (!healingResult.restarted && !healingResult.escalated) continue;
+
+        const metadata = {
+          ...(parseObject(agent.metadata) as Record<string, unknown>),
+          selfHealing: {
+            errorCount: healingResult.restarted
+              ? asNumber((parseObject((parseObject(agent.metadata) as Record<string, unknown>).selfHealing) as Record<string, unknown>).errorCount, 0) + 1
+              : asNumber((parseObject((parseObject(agent.metadata) as Record<string, unknown>).selfHealing) as Record<string, unknown>).errorCount, 0),
+            lastErrorAt: now.toISOString(),
+            lastRestartAt: healingResult.restarted ? now.toISOString() : null,
+          },
+        };
+
+        if (healingResult.restarted) {
+          // Restart the agent: set to idle so tickTimers picks it up
+          await db
+            .update(agents)
+            .set({
+              status: "idle",
+              metadata: metadata as Record<string, unknown>,
+              updatedAt: now,
+            })
+            .where(eq(agents.id, agent.id));
+
+          await logActivity(db, {
+            companyId: agent.companyId,
+            actorType: "system",
+            actorId: "heartbeat_scheduler",
+            action: "agent.self_healed",
+            entityType: "agent",
+            entityId: agent.id,
+            agentId: agent.id,
+            details: {
+              previousStatus: "error",
+              newStatus: "idle",
+              healReason: healingResult.reason,
+              agentName: agent.name,
+            },
+          });
+
+          logger.info(
+            { agentId: agent.id, agentName: agent.name, reason: healingResult.reason },
+            "Agent self-healed: error → idle",
+          );
+
+          selfHealed += 1;
+        } else if (healingResult.escalated) {
+          // Max retries exceeded — escalate to CEO
+          const config = parseSelfHealingConfig(agent);
+          const ceoAgent = allAgents.find(
+            (a) =>
+              a.companyId === agent.companyId &&
+              a.role === config.escalateToRole &&
+              a.status !== "terminated",
+          );
+
+          // Update metadata to track escalation
+          await db
+            .update(agents)
+            .set({
+              metadata: metadata as Record<string, unknown>,
+              updatedAt: now,
+            })
+            .where(eq(agents.id, agent.id));
+
+          if (ceoAgent) {
+            // Find the Paperclip project for escalation issue
+            const paperclipProject = await db
+              .select({ id: projects.id })
+              .from(projects)
+              .where(
+                and(
+                  eq(projects.companyId, agent.companyId),
+                  eq(projects.name, "Paperclip"),
+                ),
+              )
+              .limit(1)
+              .then((rows) => rows[0] ?? null);
+
+            if (paperclipProject) {
+              try {
+                const escalationIssue = await issuesSvc.create(agent.companyId, {
+                  title: `[SELF-HEAL-ESCALATE] Agent ${agent.name} failed after ${config.maxRetries} restart attempts`,
+                  description: [
+                    `Agent **${agent.name}** (${agent.title ?? agent.role}) has failed ${config.maxRetries} times and self-healing retries are exhausted.`,
+                    ``,
+                    `- **Agent ID:** \`${agent.id}\``,
+                    `- **Role:** ${agent.role}`,
+                    `- **Last Error:** ${now.toISOString()}`,
+                    `- **Retries Attempted:** ${config.maxRetries}`,
+                    ``,
+                    `Manual intervention required. Check agent adapter configuration, working directory, and recent heartbeat run logs.`,
+                  ].join("\n"),
+                  status: "todo",
+                  priority: "high",
+                  projectId: paperclipProject.id,
+                  assigneeAgentId: ceoAgent.id,
+                  originKind: "manual",
+                });
+
+                await logActivity(db, {
+                  companyId: agent.companyId,
+                  actorType: "system",
+                  actorId: "heartbeat_scheduler",
+                  action: "agent.self_heal_escalated",
+                  entityType: "agent",
+                  entityId: agent.id,
+                  agentId: agent.id,
+                  details: {
+                    reason: healingResult.reason,
+                    escalationIssueId: escalationIssue.id,
+                    agentName: agent.name,
+                  },
+                });
+
+                logger.warn(
+                  {
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    escalationIssueId: escalationIssue.id,
+                  },
+                  "Agent self-healing exhausted — escalated to CEO",
+                );
+              } catch (err) {
+                logger.error(
+                  { err, agentId: agent.id, agentName: agent.name },
+                  "Failed to create self-heal escalation issue",
+                );
+              }
+            }
+          }
+
+          selfHealEscalated += 1;
+        }
+      }
+
+      if (selfHealed > 0 || selfHealEscalated > 0) {
+        logger.info(
+          { selfHealed, selfHealEscalated },
+          "Agent self-healing cycle complete",
+        );
+      }
 
       return {
         checked: checked + issueMonitors.checked,
