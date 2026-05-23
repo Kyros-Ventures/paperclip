@@ -1,0 +1,94 @@
+name: DB Backup
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 06:00 UTC
+  workflow_dispatch:      # Manual trigger
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+env:
+  BACKUP_ALERT_WEBHOOK: ${{ secrets.BACKUP_ALERT_WEBHOOK }}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (required for CLI)
+        run: pnpm build
+
+      - name: Generate Paperclip config
+        run: |
+          mkdir -p ~/.paperclip/instances/default
+          cat > ~/.paperclip/instances/default/config.json << 'CONF'
+          {
+            "$meta": { "version": 1, "updatedAt": "2026-01-01T00:00:00.000Z", "source": "onboard" },
+            "database": { "mode": "embedded-postgres" },
+            "server": { "deploymentMode": "local_trusted", "host": "127.0.0.1", "port": 3100 }
+          }
+          CONF
+
+      - name: Start Paperclip (for embedded Postgres)
+        run: |
+          pnpm dev:once &
+          PAPERCLIP_PID=$!
+          # Wait for health
+          for i in $(seq 1 30); do
+            if curl -s http://127.0.0.1:3100/api/health > /dev/null 2>&1; then
+              echo "Paperclip ready (attempt $i)"
+              break
+            fi
+            sleep 2
+          done
+          echo "PAPERCLIP_PID=$PAPERCLIP_PID" >> $GITHUB_ENV
+
+      - name: Run DB backup
+        id: backup
+        run: |
+          mkdir -p ~/.paperclip/instances/default/data/backups
+          pnpm db:backup 2>&1 | tee /tmp/backup-output.txt
+          echo "BACKUP_RESULT=$(tail -1 /tmp/backup-output.txt)" >> $GITHUB_ENV
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paperclip-db-backup
+          path: ~/.paperclip/instances/default/data/backups/
+          retention-days: 30
+
+      - name: Stop Paperclip
+        if: always()
+        run: |
+          if [ -n "$PAPERCLIP_PID" ]; then
+            kill $PAPERCLIP_PID 2>/dev/null || true
+          fi
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          echo "Backup failed. Sending alert..."
+          ./scripts/alert-backup-failure.sh \
+            "Paperclip DB backup failed" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            "$BACKUP_ALERT_WEBHOOK"

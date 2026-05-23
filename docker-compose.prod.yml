@@ -1,0 +1,115 @@
+# Production deployment for Paperclip with PostgreSQL 17
+# Usage:
+#   1. Set required env vars (BETTER_AUTH_SECRET, PAPERCLIP_PUBLIC_URL)
+#   2. docker compose -f docker-compose.prod.yml up -d
+#   3. curl http://localhost:3100/api/health  # verify database: "postgresql"
+#   4. pnpm db:seed   # seed Kyros org data
+#
+# Health check: curl http://localhost:3100/api/health | jq .database
+# Expected: "postgresql" (not "embedded-postgresql")
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: paperclip
+      POSTGRES_PASSWORD: ${PGPASSWORD:-paperclip}
+      POSTGRES_DB: paperclip
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperclip -d paperclip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "127.0.0.1:5432:5432"  # localhost only — use reverse proxy for external access
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3100"  # localhost only — put nginx/caddy in front
+    environment:
+      DATABASE_URL: postgres://paperclip:${PGPASSWORD:-paperclip}@db:5432/paperclip
+      PORT: "3100"
+      SERVE_UI: "true"
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
+      # S3 backup (optional)
+      BACKUP_S3_BUCKET: "${BACKUP_S3_BUCKET:-}"
+      BACKUP_S3_REGION: "${BACKUP_S3_REGION:-us-east-1}"
+      BACKUP_S3_PREFIX: "${BACKUP_S3_PREFIX:-paperclip/backups/}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+    volumes:
+      - paperclip-data:/paperclip
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/api/health | grep -q 'ok'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  backup-cron:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: |
+      /bin/sh -c '
+      while true; do
+        # Sleep until 3 AM UTC
+        NOW=$(date +%s)
+        NEXT=$(date -d "tomorrow 03:00" +%s 2>/dev/null || echo $((NOW + 86400)))
+        SLEEP_SECS=$((NEXT - NOW))
+        if [ "$SLEEP_SECS" -gt 0 ]; then
+          echo "Next backup in ${SLEEP_SECS}s (at $(date -d @$NEXT 2>/dev/null || date -r $NEXT))"
+          sleep "$SLEEP_SECS"
+        fi
+        echo "[$(date -Iseconds)] Running backup..."
+        pnpm db:backup && \
+        if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+          echo "Uploading to S3..."
+          ./scripts/backup-upload-s3.sh
+        fi
+        echo "[$(date -Iseconds)] Backup complete."
+      done
+      '
+    environment:
+      DATABASE_URL: postgres://paperclip:${PGPASSWORD:-paperclip}@db:5432/paperclip
+      BACKUP_S3_BUCKET: "${BACKUP_S3_BUCKET:-}"
+      BACKUP_S3_REGION: "${BACKUP_S3_REGION:-us-east-1}"
+      BACKUP_S3_PREFIX: "${BACKUP_S3_PREFIX:-paperclip/backups/}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+    volumes:
+      - paperclip-data:/paperclip
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  pgdata:
+  paperclip-data:
