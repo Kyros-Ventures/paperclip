@@ -28,6 +28,7 @@ import { ApprovalDetail } from "./pages/ApprovalDetail";
 import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
 import { NotificationsCenter } from "./pages/NotificationsCenter";
+import { JarvisIntegrationStatus } from "./pages/JarvisIntegrationStatus";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanyEnvironments } from "./pages/CompanyEnvironments";
@@ -133,6 +134,7 @@ function boardRoutes() {
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
       <Route path="notifications" element={<NotificationsCenter />} />
+      <Route path="jarvis-integration" element={<JarvisIntegrationStatus />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
