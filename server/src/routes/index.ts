@@ -23,3 +23,5 @@ export { instanceSettingsRoutes } from "./instance-settings.js";
 export { instanceDatabaseBackupRoutes } from "./instance-database-backups.js";
 export { cloudUpstreamRoutes } from "./cloud-upstreams.js";
 export { notificationRoutes } from "./notifications.js";
+export { estimationRoutes } from "./estimation.js";
+export { systemMonitoringRoutes } from "./system-monitoring.js";

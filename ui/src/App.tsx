@@ -27,8 +27,11 @@ import { Approvals } from "./pages/Approvals";
 import { ApprovalDetail } from "./pages/ApprovalDetail";
 import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
+import { SystemHealthPage } from "./pages/SystemHealthPage";
 import { NotificationsCenter } from "./pages/NotificationsCenter";
 import { JarvisIntegrationStatus } from "./pages/JarvisIntegrationStatus";
+import { EstimationEngine } from "./pages/EstimationEngine";
+import { AssignmentEngine } from "./pages/AssignmentEngine";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanyEnvironments } from "./pages/CompanyEnvironments";
@@ -133,8 +136,11 @@ function boardRoutes() {
       <Route path="approvals/:approvalId" element={<ApprovalDetail />} />
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
+      <Route path="system-health" element={<SystemHealthPage />} />
       <Route path="notifications" element={<NotificationsCenter />} />
       <Route path="jarvis-integration" element={<JarvisIntegrationStatus />} />
+      <Route path="estimation" element={<EstimationEngine />} />
+      <Route path="assignment" element={<AssignmentEngine />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />

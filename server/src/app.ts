@@ -27,6 +27,8 @@ import { secretRoutes } from "./routes/secrets.js";
 import { costRoutes } from "./routes/costs.js";
 import { activityRoutes } from "./routes/activity.js";
 import { notificationRoutes } from "./routes/notifications.js";
+import { estimationRoutes } from "./routes/estimation.js";
+import { assignmentRoutes } from "./routes/assignment.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { userProfileRoutes } from "./routes/user-profiles.js";
 import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
@@ -38,6 +40,7 @@ import {
   type InstanceDatabaseBackupService,
 } from "./routes/instance-database-backups.js";
 import { llmRoutes } from "./routes/llms.js";
+import { localLlmConfigRoutes } from "./routes/local-llm-config.js";
 import { authRoutes } from "./routes/auth.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
@@ -64,6 +67,7 @@ import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 import { createCachedViteHtmlRenderer } from "./vite-html-renderer.js";
 import { DEFAULT_JSON_BODY_LIMIT, PORTABLE_JSON_BODY_LIMIT } from "./http/body-limits.js";
 import { COMPANY_IMPORT_API_PATH } from "./routes/company-import-paths.js";
+import { systemMonitoringRoutes } from "./routes/system-monitoring.js";
 
 type UiMode = "none" | "static" | "vite-dev";
 const FEEDBACK_EXPORT_FLUSH_INTERVAL_MS = 5_000;
@@ -229,12 +233,16 @@ export async function createApp(
   api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(activityRoutes(db));
   api.use(notificationRoutes(db));
+  api.use(estimationRoutes(db));
+  api.use(assignmentRoutes(db));
   api.use(dashboardRoutes(db));
   api.use(userProfileRoutes(db));
+  api.use(systemMonitoringRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(sidebarPreferenceRoutes(db));
   api.use(inboxDismissalRoutes(db));
   api.use(instanceSettingsRoutes(db));
+  api.use(localLlmConfigRoutes(db));
   if (opts.databaseBackupService) {
     api.use(instanceDatabaseBackupRoutes(opts.databaseBackupService));
   }
