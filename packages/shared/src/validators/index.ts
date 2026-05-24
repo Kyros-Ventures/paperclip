@@ -346,6 +346,21 @@ export {
 } from "./cost.js";
 
 export {
+  localLlmQuantizationSchema,
+  localLlmConfigSchema,
+  putLocalLlmConfigSchema,
+  localLlmInferenceSettingsSchema,
+  putLocalLlmInferenceSettingsSchema,
+  loadLocalLlmModelSchema,
+  type LocalLlmQuantization,
+  type LocalLlmConfig,
+  type PutLocalLlmConfig,
+  type LocalLlmInferenceSettings,
+  type PutLocalLlmInferenceSettings,
+  type LoadLocalLlmModel,
+} from "./local-llm.js";
+
+export {
   createFinanceEventSchema,
   type CreateFinanceEvent,
 } from "./finance.js";

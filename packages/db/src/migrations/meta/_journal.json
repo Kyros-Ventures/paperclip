@@ -638,6 +638,13 @@
       "when": 1779572909341,
       "tag": "0090_dark_night_nurse",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1748044800000,
+      "tag": "0091_local_llm_settings",
+      "breakpoints": true
     }
   ]
 }
