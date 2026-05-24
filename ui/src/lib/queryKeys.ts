@@ -195,4 +195,11 @@ export const queryKeys = {
   adapters: {
     all: ["adapters"] as const,
   },
+  systemHealth: {
+    health: ["system-health", "health"] as const,
+    checks: ["system-health", "checks"] as const,
+    resources: ["system-health", "resources"] as const,
+    agentResourceUsage: ["system-health", "agent-resource-usage"] as const,
+    agentThrottling: ["system-health", "agent-throttling"] as const,
+  },
 };
