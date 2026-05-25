@@ -2,7 +2,7 @@
  * Issue Assignment Module
  * Handles agent assignment, workload balancing, and auto-assignment logic
  */
-import { issues, agents } from "@paperclipai/db";
+import { issues, agents, assignmentRules, type RuleConditions, type RuleAction } from "@paperclipai/db";
 import type { Db } from "@paperclipai/db";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -287,4 +287,45 @@ async function getTopAgents(
   const scored = await Promise.all(companyAgents.map((a) => calculateAgentScore(db, a, issue)));
   scored.sort((a, b) => b.totalScore - a.totalScore);
   return scored.slice(0, limit);
+}
+
+export async function applyAssignmentRules(
+  db: Db,
+  issue: {
+    id: string;
+    title: string;
+    description: string | null;
+    priority: string | null;
+    companyId: string;
+  },
+): Promise<{ matched: boolean; action?: RuleAction }> {
+  const rules = await db.query.assignmentRules.findMany({
+    where: and(
+      eq(assignmentRules.companyId, issue.companyId),
+      eq(assignmentRules.enabled, true),
+    ),
+    orderBy: (rules, { asc }) => [asc(rules.priority)],
+  });
+
+  for (const rule of rules) {
+    const conditions = rule.conditions as RuleConditions | null;
+    if (!conditions) continue;
+
+    if (
+      conditions.priority?.length &&
+      !conditions.priority.includes(issue.priority ?? "")
+    ) continue;
+    if (
+      conditions.titleContains &&
+      !issue.title.toLowerCase().includes(conditions.titleContains.toLowerCase())
+    ) continue;
+    if (
+      conditions.descriptionContains &&
+      !(issue.description ?? "").toLowerCase().includes(conditions.descriptionContains.toLowerCase())
+    ) continue;
+
+    return { matched: true, action: rule.action as RuleAction };
+  }
+
+  return { matched: false };
 }

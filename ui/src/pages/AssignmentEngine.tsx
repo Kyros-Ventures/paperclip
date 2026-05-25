@@ -9,6 +9,7 @@ import {
   BarChart2,
   ChevronDown,
   ChevronUp,
+  Settings,
 } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -124,6 +125,17 @@ export function AssignmentEngine() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["assignment", "workload"] });
     },
+  });
+
+  const {
+    data: rules,
+    isLoading: rulesLoading,
+    error: rulesError,
+  } = useQuery({
+    queryKey: ["assignment", "rules", selectedCompanyId],
+    queryFn: () => assignmentApi.getRules(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 30_000,
   });
 
   if (!selectedCompanyId) {
@@ -350,6 +362,64 @@ export function AssignmentEngine() {
             <div className="rounded-md border border-border overflow-hidden">
               {recommendations.recommendations.map((rec, idx) => (
                 <AgentRecommendationRow key={rec.agentId} rec={rec} rank={idx + 1} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Assignment Rules */}
+      <Card className="border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Settings className="size-4" />
+            Assignment Rules
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Rules that control automatic issue assignment based on conditions like priority, labels, and content.
+          </p>
+          {rulesLoading ? (
+            <div className="text-xs text-muted-foreground">Loading rules…</div>
+          ) : rulesError ? (
+            <div className="text-xs text-red-400">
+              {rulesError instanceof Error ? rulesError.message : "Failed to load rules"}
+            </div>
+          ) : !rules?.data?.length ? (
+            <div className="text-xs text-muted-foreground py-2">
+              No assignment rules configured. Create a rule to automatically assign issues based on conditions.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {rules.data.map((rule) => (
+                <div key={rule.id} className="flex items-center justify-between rounded-md border border-border p-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">{rule.name}</span>
+                      <Badge className={cn("text-xs", rule.enabled ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground")}>
+                        {rule.enabled ? "Active" : "Disabled"}
+                      </Badge>
+                    </div>
+                    {rule.description && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{rule.description}</p>
+                    )}
+                    <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
+                      {rule.conditions?.priority?.length ? (
+                        <span>Priority: {rule.conditions.priority.join(", ")}</span>
+                      ) : null}
+                      {rule.conditions?.labels?.length ? (
+                        <span>Labels: {rule.conditions.labels.join(", ")}</span>
+                      ) : null}
+                      {rule.action?.assignToAgentId ? (
+                        <span className="text-blue-400">Assign to agent</span>
+                      ) : null}
+                      {rule.action?.setPriority ? (
+                        <span>Set priority: {rule.action.setPriority}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           )}
