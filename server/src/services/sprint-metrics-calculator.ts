@@ -190,11 +190,11 @@ export function sprintMetricsCalculator(db: Db) {
 
       // Get stories in sprint
       const sprintStoryList = await db
-        .select({ storyId: sprintStories.storyId })
+        .select({ issueId: sprintStories.issueId })
         .from(sprintStories)
         .where(eq(sprintStories.sprintId, sprintId));
 
-      const storyIds = sprintStoryList.map((s) => s.storyId);
+      const storyIds = sprintStoryList.map((s) => s.issueId).filter((id): id is string => id !== null);
 
       let totalStories = 0;
       let totalPoints = 0;
@@ -205,7 +205,7 @@ export function sprintMetricsCalculator(db: Db) {
         const storyList = await db
           .select({
             id: stories.id,
-            points: stories.points,
+            points: stories.storyPoints,
             status: stories.status,
           })
           .from(stories)
@@ -292,19 +292,19 @@ export function sprintMetricsCalculator(db: Db) {
 
       for (const sprint of allSprints) {
         const sprintStoryList = await db
-          .select({ storyId: sprintStories.storyId })
+          .select({ issueId: sprintStories.issueId })
           .from(sprintStories)
           .where(eq(sprintStories.sprintId, sprint.id));
 
-        const storyIds = sprintStoryList.map((s) => s.storyId);
-        let totalPoints = sprint.totalPoints || 0;
-        let completedPoints = sprint.completedPoints || 0;
+        const storyIds = sprintStoryList.map((s) => s.issueId).filter((id): id is string => id !== null);
+        let totalPoints = 0;
+        let completedPoints = 0;
 
         if (storyIds.length > 0) {
           const storyList = await db
             .select({
               id: stories.id,
-              points: stories.points,
+              points: stories.storyPoints,
               status: stories.status,
             })
             .from(stories)
@@ -397,13 +397,14 @@ export function sprintMetricsCalculator(db: Db) {
       // Try to find a suitable issue to comment on (e.g., the sprint goal)
       // For now, we'll look for any story in the sprint that has an associated issue
       const sprintStoryList = await db
-        .select({ storyId: sprintStories.storyId })
+        .select({ issueId: sprintStories.issueId })
         .from(sprintStories)
         .where(eq(sprintStories.sprintId, sprintId));
 
       if (sprintStoryList.length > 0) {
         // Post on the first story - in practice you'd want to post on the sprint goal
-        const storyId = sprintStoryList[0]!.storyId;
+        const storyId = sprintStoryList[0]!.issueId;
+        if (!storyId) return;
         try {
           await sprintMetricsCalculator(db).postComment(storyId, formatted);
           console.log(`[SprintMetrics] Posted burndown report for sprint ${sprintId}`);

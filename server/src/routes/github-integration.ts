@@ -267,9 +267,10 @@ export function githubIntegrationRoutes(db: Db) {
   router.get("/config/:projectId", async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      const pid = projectId as string;
 
       const project = await db.query.projects.findFirst({
-        where: eq(projects.id, projectId),
+        where: eq(projects.id, pid),
       });
 
       if (!project) {
@@ -279,7 +280,7 @@ export function githubIntegrationRoutes(db: Db) {
       const configs = await db
         .select()
         .from(aiReviewConfig)
-        .where(eq(aiReviewConfig.projectId, projectId));
+        .where(eq(aiReviewConfig.projectId, pid));
 
       res.json({ success: true, data: configs });
     } catch (error) {
@@ -305,6 +306,7 @@ export function githubIntegrationRoutes(db: Db) {
     async (req: Request, res: Response) => {
       try {
         const { projectId } = req.params;
+        const pid = projectId as string;
         const configData = req.body as {
           repository: string;
           isEnabled?: boolean;
@@ -319,7 +321,7 @@ export function githubIntegrationRoutes(db: Db) {
         };
 
         const project = await db.query.projects.findFirst({
-          where: eq(projects.id, projectId),
+          where: eq(projects.id, pid),
         });
 
         if (!project) {
@@ -328,7 +330,7 @@ export function githubIntegrationRoutes(db: Db) {
 
         const existingConfig = await db.query.aiReviewConfig.findFirst({
           where: and(
-            eq(aiReviewConfig.projectId, projectId),
+            eq(aiReviewConfig.projectId, pid),
             eq(aiReviewConfig.repository, configData.repository),
           ),
         });
@@ -348,7 +350,7 @@ export function githubIntegrationRoutes(db: Db) {
         } else {
           const [newConfig] = await db
             .insert(aiReviewConfig)
-            .values({ projectId, ...configData })
+            .values({ projectId: pid, ...configData })
             .returning();
           config = newConfig;
           logger.info(

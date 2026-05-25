@@ -75,7 +75,7 @@ export function sprintRoutes(db: Db) {
     await db.delete(sprintStories)
       .where(and(
         eq(sprintStories.sprintId, req.params.id as string),
-        eq(sprintStories.storyId, req.params.storyId as string),
+        eq(sprintStories.issueId, req.params.storyId as string),
       ));
     res.status(204).send();
   });

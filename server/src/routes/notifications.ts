@@ -11,6 +11,8 @@ import type { Db } from "@paperclipai/db";
 import { assertCompanyAccess, assertAuthenticated } from "./authz.js";
 import { activityService } from "../services/activity.js";
 import { heartbeatService } from "../services/index.js";
+import { agents } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 
 // Notification-worthy action types
 const NOTIFY_ACTIONS = new Set([
@@ -59,19 +61,22 @@ export function notificationRoutes(db: Db) {
           .slice(0, limit);
 
         // Enrich with agent names
-        const agents = new Map<string, string>();
+        const agentMap = new Map<string, string>();
         for (const n of notifications) {
-          if (n.agentId && !agents.has(n.agentId)) {
+          if (n.agentId && !agentMap.has(n.agentId)) {
             try {
-              const agent = await heartbeat.getAgent?.(n.agentId);
-              if (agent) agents.set(n.agentId, agent.name);
+              const a = await db.query.agents.findFirst({
+                where: eq(agents.id, n.agentId),
+                columns: { name: true },
+              });
+              if (a) agentMap.set(n.agentId, a.name);
             } catch { /* agent may not exist */ }
           }
         }
 
         const enriched = notifications.map((n) => ({
           ...n,
-          agentName: n.agentId ? agents.get(n.agentId) ?? null : null,
+          agentName: n.agentId ? agentMap.get(n.agentId) ?? null : null,
         }));
 
         res.json(enriched);

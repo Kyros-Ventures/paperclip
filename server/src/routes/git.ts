@@ -102,7 +102,7 @@ function repoName(repoPath: string): string {
   return path.basename(repoPath);
 }
 
-function collectRepo(repoPath: string): GitRepo | null {
+function collectRepo(repoPath: string): GitRepo {
   const id = resolveRepoId(repoPath);
   const remoteUrl = git(repoPath, ["config", "--get", "remote.origin.url"]) || undefined;
   const branch = git(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"]) || "unknown";
