@@ -161,7 +161,7 @@ interface RepoConfigFormProps {
 
 function RepoConfigForm({ projectId, initialRepository, onDone }: RepoConfigFormProps) {
   const queryClient = useQueryClient();
-  const { addToast } = useToastActions();
+  const { pushToast } = useToastActions();
 
   const [repository, setRepository] = useState(initialRepository ?? "");
   const [isEnabled, setIsEnabled] = useState(true);
@@ -199,14 +199,14 @@ function RepoConfigForm({ projectId, initialRepository, onDone }: RepoConfigForm
       githubApi.upsertConfig(projectId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["github-config", projectId] });
-      addToast({ title: "Configuration saved", variant: "success" });
+      pushToast({ title: "Configuration saved", tone: "success" });
       onDone();
     },
     onError: (err) => {
-      addToast({
+      pushToast({
         title: "Failed to save",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "error",
+        body: err instanceof Error ? err.message : "Unknown error",
+        tone: "error",
       });
     },
   });
@@ -338,7 +338,7 @@ export function GitHubIntegration() {
   }, [setBreadcrumbs]);
 
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
-    queryKey: [...queryKeys.projects(selectedCompanyId!), "all"],
+    queryKey: [...queryKeys.projects.list(selectedCompanyId!), "all"],
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });

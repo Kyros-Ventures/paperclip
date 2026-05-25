@@ -83,7 +83,7 @@ export function NotificationsCenter() {
   });
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Bell} title="No company selected" description="Select a company to view notifications." />;
+    return <EmptyState icon={Bell} message="No company selected — Select a company to view notifications." />;
   }
 
   if (isLoading) return <PageSkeleton />;
@@ -92,8 +92,7 @@ export function NotificationsCenter() {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Failed to load notifications"
-        description={(error as Error).message}
+        message="Failed to load notifications"
       />
     );
   }
@@ -102,8 +101,7 @@ export function NotificationsCenter() {
     return (
       <EmptyState
         icon={Bell}
-        title="No notifications yet"
-        description="Recent activity will appear here as agents work on issues."
+        message="No notifications yet — Recent activity will appear here as agents work on issues."
       />
     );
   }

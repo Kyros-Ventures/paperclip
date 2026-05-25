@@ -159,7 +159,7 @@ function BranchesPanel({ repo }: { repo: GitRepo }) {
 
 function CloneDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const { addToast } = useToastActions();
+  const { pushToast } = useToastActions();
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
 
@@ -167,15 +167,15 @@ function CloneDialog({ onClose }: { onClose: () => void }) {
     mutationFn: () => gitApi.clone(url, name || undefined),
     onSuccess: (result) => {
       if (result.success) {
-        addToast({ title: `Cloned ${name || url}`, variant: "success" });
+        pushToast({ title: `Cloned ${name || url}`, tone: "success" });
         void queryClient.invalidateQueries({ queryKey: ["git-repos"] });
         onClose();
       } else {
-        addToast({ title: "Clone failed", description: result.error, variant: "error" });
+        pushToast({ title: "Clone failed", body: result.error, tone: "error" });
       }
     },
     onError: (err) => {
-      addToast({ title: "Clone failed", description: err instanceof Error ? err.message : "Unknown error", variant: "error" });
+      pushToast({ title: "Clone failed", body: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     },
   });
 
@@ -224,7 +224,7 @@ function CloneDialog({ onClose }: { onClose: () => void }) {
 
 function RepoActions({ repo }: { repo: GitRepo }) {
   const queryClient = useQueryClient();
-  const { addToast } = useToastActions();
+  const { pushToast } = useToastActions();
   const [showNewBranch, setShowNewBranch] = useState(false);
   const [branchName, setBranchName] = useState("");
 
@@ -232,11 +232,11 @@ function RepoActions({ repo }: { repo: GitRepo }) {
     mutate: () =>
       fn()
         .then(() => {
-          addToast({ title: `${label} succeeded`, variant: "success" });
+          pushToast({ title: `${label} succeeded`, tone: "success" });
           void queryClient.invalidateQueries({ queryKey: ["git-repos"] });
         })
         .catch((err) => {
-          addToast({ title: `${label} failed`, description: String(err), variant: "error" });
+          pushToast({ title: `${label} failed`, body: String(err), tone: "error" });
         }),
   });
 
@@ -259,13 +259,13 @@ function RepoActions({ repo }: { repo: GitRepo }) {
   const branchMutation = useMutation({
     mutationFn: () => gitApi.createBranch(repo.id, branchName),
     onSuccess: () => {
-      addToast({ title: `Created branch ${branchName}`, variant: "success" });
+      pushToast({ title: `Created branch ${branchName}`, tone: "success" });
       void queryClient.invalidateQueries({ queryKey: ["git-repos"] });
       setShowNewBranch(false);
       setBranchName("");
     },
     onError: (err) => {
-      addToast({ title: "Branch creation failed", description: String(err), variant: "error" });
+      pushToast({ title: "Branch creation failed", body: String(err), tone: "error" });
     },
   });
 
@@ -318,7 +318,7 @@ function RepoActions({ repo }: { repo: GitRepo }) {
 export function GitReposCenter() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const { addToast } = useToastActions();
+  const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
   const [showClone, setShowClone] = useState(false);
   const [expandedRepo, setExpandedRepo] = useState<string | null>(null);
@@ -343,10 +343,10 @@ export function GitReposCenter() {
     mutationFn: () => gitApi.scan(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["git-repos"] });
-      addToast({ title: "Scan complete", variant: "success" });
+      pushToast({ title: "Scan complete", tone: "success" });
     },
     onError: (err) => {
-      addToast({ title: "Scan failed", description: String(err), variant: "error" });
+      pushToast({ title: "Scan failed", body: String(err), tone: "error" });
     },
   });
 
@@ -354,7 +354,7 @@ export function GitReposCenter() {
     mutationFn: () => gitApi.clearCache(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["git-cache-stats"] });
-      addToast({ title: "Cache cleared", variant: "success" });
+      pushToast({ title: "Cache cleared", tone: "success" });
     },
   });
 
