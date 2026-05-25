@@ -79,6 +79,7 @@ export { pluginWebhookDeliveries } from "./plugin_webhooks.js";
 export { pluginLogs } from "./plugin_logs.js";
 export { sprints, sprintStories, stories } from "./sprints.js";
 export { templates } from "./templates.js";
+export { assignmentRules } from "./assignment_rules.js";
 export { localLlmSettings } from "./local_llm_settings.js";
 export {
   aiReviewQueue,
