@@ -29,6 +29,7 @@ import { activityRoutes } from "./routes/activity.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { estimationRoutes } from "./routes/estimation.js";
 import { assignmentRoutes } from "./routes/assignment.js";
+import { assignmentRuleRoutes } from "./routes/assignment-rules.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { userProfileRoutes } from "./routes/user-profiles.js";
 import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
@@ -48,6 +49,7 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { githubIntegrationRoutes } from "./routes/github-integration.js";
+import { gitRoutes } from "./routes/git.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -236,6 +238,7 @@ export async function createApp(
   api.use(notificationRoutes(db));
   api.use(estimationRoutes(db));
   api.use(assignmentRoutes(db));
+  api.use(assignmentRuleRoutes(db));
   api.use(dashboardRoutes(db));
   api.use(userProfileRoutes(db));
   api.use(systemMonitoringRoutes(db));
@@ -327,6 +330,7 @@ export async function createApp(
     }),
   );
   api.use("/github", githubIntegrationRoutes(db));
+  api.use("/git", gitRoutes());
   app.use("/api", api);
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "API route not found" });

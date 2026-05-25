@@ -34,6 +34,7 @@ import { EstimationEngine } from "./pages/EstimationEngine";
 import { AssignmentEngine } from "./pages/AssignmentEngine";
 import { GitHubIntegration } from "./pages/GitHubIntegration";
 import { LocalLLMConfiguration } from "./pages/LocalLLMConfiguration";
+import { GitReposCenter } from "./pages/GitReposCenter";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanyEnvironments } from "./pages/CompanyEnvironments";
@@ -144,6 +145,7 @@ function boardRoutes() {
       <Route path="estimation" element={<EstimationEngine />} />
       <Route path="assignment" element={<AssignmentEngine />} />
       <Route path="github-integration" element={<GitHubIntegration />} />
+      <Route path="git-repos" element={<GitReposCenter />} />
       <Route path="local-llm" element={<LocalLLMConfiguration />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />

@@ -19,6 +19,7 @@ import {
   BarChart3,
   UserCheck,
   Cpu,
+  FolderGit2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "@/lib/router";
@@ -137,6 +138,7 @@ export function Sidebar() {
           <SidebarNavItem to="/estimation" label="Estimation" icon={BarChart3} />
           <SidebarNavItem to="/assignment" label="Assignment" icon={UserCheck} />
           <SidebarNavItem to="/github-integration" label="GitHub" icon={GitPullRequest} />
+          <SidebarNavItem to="/git-repos" label="Git Repos" icon={FolderGit2} />
           <SidebarNavItem to="/local-llm" label="Local LLM" icon={Cpu} />
           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
         </SidebarSection>
