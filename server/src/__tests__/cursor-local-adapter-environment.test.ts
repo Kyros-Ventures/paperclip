@@ -212,6 +212,7 @@ describe("cursor environment diagnostics", () => {
           env: {
             CURSOR_API_KEY: "test-key",
             PAPERCLIP_TEST_ARGS_PATH: argsCapturePath,
+            PATH: process.env.PATH ?? "",
           },
         },
       });

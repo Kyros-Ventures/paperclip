@@ -86,6 +86,7 @@ const mockAccessService = vi.hoisted(() => ({
   ensureMembership: vi.fn(),
   listPrincipalGrants: vi.fn(),
   setPrincipalPermission: vi.fn(),
+  decide: vi.fn(async () => ({ allowed: true, explanation: "" })),
 }));
 
 const mockHeartbeatService = vi.hoisted(() => ({
@@ -196,7 +197,9 @@ beforeEach(() => {
   mockAgentService.getChainOfCommand.mockResolvedValue([]);
   mockAccessService.getMembership.mockResolvedValue(null);
   mockAccessService.listPrincipalGrants.mockResolvedValue([]);
+  mockAccessService.decide.mockResolvedValue({ allowed: true, explanation: "" });
   mockHeartbeatService.invoke.mockResolvedValue(makeRun());
+  mockHeartbeatService.wakeup.mockResolvedValue(makeRun());
   mockInstanceSettingsService.getGeneral.mockResolvedValue({ censorUsernameInLogs: false });
   mockLogActivity.mockResolvedValue(undefined);
 });
@@ -204,7 +207,7 @@ beforeEach(() => {
 describe("heartbeat lifecycle: invoke creates run", () => {
   it("creates a run record and returns it with status queued", async () => {
     const run = makeRun({ status: "queued" });
-    mockHeartbeatService.invoke.mockResolvedValue(run);
+    mockHeartbeatService.wakeup.mockResolvedValue(run);
 
     const res = await request(createApp()).post(
       `/api/agents/${AGENT_ID}/heartbeat/invoke`,
@@ -216,19 +219,22 @@ describe("heartbeat lifecycle: invoke creates run", () => {
       status: "queued",
       agentId: AGENT_ID,
     });
-    expect(mockHeartbeatService.invoke).toHaveBeenCalledTimes(1);
-    expect(mockHeartbeatService.invoke).toHaveBeenCalledWith(
+    expect(mockHeartbeatService.wakeup).toHaveBeenCalledTimes(1);
+    expect(mockHeartbeatService.wakeup).toHaveBeenCalledWith(
       AGENT_ID,
-      "on_demand",
-      expect.objectContaining({ triggeredBy: "board" }),
-      "manual",
-      expect.objectContaining({ actorType: "user", actorId: "board-user" }),
+      expect.objectContaining({
+        source: "on_demand",
+        triggerDetail: "manual",
+        requestedByActorType: "user",
+        requestedByActorId: "board-user",
+        contextSnapshot: expect.objectContaining({ triggeredBy: "board" }),
+      }),
     );
   });
 
   it("includes id, status, agentId, and startedAt in the response", async () => {
     const startedAt = new Date("2026-05-22T12:34:56.000Z");
-    mockHeartbeatService.invoke.mockResolvedValue(makeRun({ startedAt }));
+    mockHeartbeatService.wakeup.mockResolvedValue(makeRun({ startedAt }));
 
     const res = await request(createApp()).post(
       `/api/agents/${AGENT_ID}/heartbeat/invoke`,
@@ -265,7 +271,7 @@ describe("heartbeat lifecycle: multiple invocations", () => {
     const firstRun = makeRun({ id: RUN_ID_1, status: "queued" });
     const secondRun = makeRun({ id: RUN_ID_2, status: "queued" });
 
-    mockHeartbeatService.invoke
+    mockHeartbeatService.wakeup
       .mockResolvedValueOnce(firstRun)
       .mockResolvedValueOnce(secondRun);
 
@@ -283,11 +289,11 @@ describe("heartbeat lifecycle: multiple invocations", () => {
     expect(first.body.id).toBe(RUN_ID_1);
     expect(second.body.id).toBe(RUN_ID_2);
     expect(first.body.id).not.toBe(second.body.id);
-    expect(mockHeartbeatService.invoke).toHaveBeenCalledTimes(2);
+    expect(mockHeartbeatService.wakeup).toHaveBeenCalledTimes(2);
   });
 
   it("reports skipped status when the service declines to create a run", async () => {
-    mockHeartbeatService.invoke.mockResolvedValue(null);
+    mockHeartbeatService.wakeup.mockResolvedValue(null);
 
     const res = await request(createApp()).post(
       `/api/agents/${AGENT_ID}/heartbeat/invoke`,

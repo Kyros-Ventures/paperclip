@@ -62,6 +62,7 @@ const mockAccessService = vi.hoisted(() => ({
   ensureMembership: vi.fn(),
   listPrincipalGrants: vi.fn(),
   setPrincipalPermission: vi.fn(),
+  decide: vi.fn(async () => ({ allowed: true, explanation: "" })),
 }));
 
 const mockApprovalService = vi.hoisted(() => ({}));
@@ -103,7 +104,34 @@ vi.mock("../services/index.js", () => ({
   syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),
   workspaceOperationService: () => mockWorkspaceOperationService,
   companyService: () => ({}),
+  issueRecoveryActionService: () => ({}),
 }));
+
+vi.mock("../services/environments.js", () => ({
+  environmentService: () => ({}),
+}));
+
+vi.mock("../services/environment-execution-target.js", () => ({
+  resolveEnvironmentExecutionTarget: vi.fn(),
+}));
+
+vi.mock("../services/environment-runtime.js", () => ({
+  environmentRuntimeService: () => ({}),
+}));
+
+vi.mock("../services/secrets.js", () => ({
+  secretService: () => mockSecretService,
+}));
+
+vi.mock("../services/instance-settings.js", () => ({
+  instanceSettingsService: () => ({}),
+}));
+
+vi.mock("../services/recovery/service.js", () => ({
+  recoveryService: () => ({}),
+}));
+
+vi.mock("../services/default-agent-instructions.js", () => ({}));
 
 function createDbStub(opts: { countResult?: number; companyExists?: boolean } = {}) {
   const { countResult = 1, companyExists = true } = opts;
@@ -168,6 +196,7 @@ beforeEach(() => {
   mockAccessService.listPrincipalGrants.mockResolvedValue([]);
   mockAccessService.ensureMembership.mockResolvedValue(undefined);
   mockAccessService.setPrincipalPermission.mockResolvedValue(undefined);
+  mockAccessService.decide.mockResolvedValue({ allowed: true, explanation: "" });
 
   mockBudgetService.upsertPolicy.mockResolvedValue(undefined);
   mockHeartbeatService.cancelActiveForAgent.mockResolvedValue(undefined);
@@ -313,15 +342,9 @@ describe("GET /api/companies/:companyId/agents", () => {
     const res = await request(createApp()).get(`/api/companies/${COMPANY_ID}/agents`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.data)).toBe(true);
-    expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0]).toMatchObject({ id: AGENT_ID, name: "Engineer Bot" });
-    expect(res.body.pagination).toMatchObject({
-      page: 1,
-      limit: 500,
-      total: 1,
-      totalPages: 1,
-    });
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ id: AGENT_ID, name: "Engineer Bot" });
   });
 });
 

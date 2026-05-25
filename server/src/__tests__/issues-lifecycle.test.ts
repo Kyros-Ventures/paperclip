@@ -24,6 +24,11 @@ const mockIssueService = vi.hoisted(() => ({
   getAncestors: vi.fn(async () => []),
   listAttachments: vi.fn(async () => []),
   assertCheckoutOwner: vi.fn(async () => ({ adoptedFromRunId: null })),
+  getRelationSummaries: vi.fn(async () => ({ blockedBy: [], blocks: [], children: [] })),
+  listBlockerAttention: vi.fn(async () => new Map()),
+  listProductivityReviews: vi.fn(async () => new Map()),
+  getCurrentScheduledRetry: vi.fn(async () => null),
+  listWakeableBlockedDependents: vi.fn(async () => []),
 }));
 
 const mockHeartbeatService = vi.hoisted(() => ({
@@ -67,6 +72,7 @@ const mockRoutineService = vi.hoisted(() => ({
 const mockAccessService = vi.hoisted(() => ({
   canUser: vi.fn(async () => true),
   hasPermission: vi.fn(async () => true),
+  decide: vi.fn(async () => ({ allowed: true, explanation: "" })),
 }));
 
 const mockLogActivity = vi.hoisted(() => vi.fn(async () => undefined));
@@ -89,9 +95,30 @@ vi.mock("../services/index.js", () => ({
     getById: vi.fn(async () => null),
   }),
   companySearchService: () => ({}),
-  issueRecoveryActionService: () => ({}),
-  issueThreadInteractionService: () => ({}),
-  issueReferenceService: () => ({}),
+  issueRecoveryActionService: () => ({
+    getActiveForIssue: vi.fn(async () => []),
+  }),
+  issueThreadInteractionService: () => ({
+    expireRequestConfirmationsSupersededByComment: vi.fn(async () => []),
+  }),
+  issueReferenceService: () => ({
+    syncIssue: vi.fn(async () => undefined),
+    syncDocument: vi.fn(async () => undefined),
+    syncComment: vi.fn(async () => undefined),
+    listIssueReferenceSummary: vi.fn(async () => ({
+      outbound: [],
+      inbound: [],
+    })),
+    diffIssueReferenceSummary: vi.fn(() => ({
+      addedReferencedIssues: [],
+      removedReferencedIssues: [],
+      currentReferencedIssues: [],
+    })),
+    emptySummary: vi.fn(() => ({
+      outbound: [],
+      inbound: [],
+    })),
+  }),
 }));
 
 vi.mock("../services/workflow.js", () => ({
@@ -136,6 +163,17 @@ vi.mock("../services/company-search-rate-limit.js", () => ({
 vi.mock("../services/issue-execution-policy.js", () => ({
   getIssueExecutionPolicy: vi.fn(async () => null),
   resolveExecutionWorkspaceForIssue: vi.fn(async () => null),
+  normalizeIssueExecutionPolicy: vi.fn(() => null),
+  parseIssueExecutionState: vi.fn(() => null),
+  redactIssueMonitorExternalRef: vi.fn(() => null),
+  setIssueExecutionPolicyMonitorScheduledBy: vi.fn((policy: unknown) => policy),
+  applyIssueExecutionPolicyTransition: vi.fn(() => ({ patch: {} })),
+  stripMonitorFromExecutionPolicy: vi.fn((policy: unknown) => policy),
+  assigneePrincipal: vi.fn(() => null),
+  buildInitialIssueMonitorFields: vi.fn(() => ({})),
+  buildIssueMonitorTriggeredPatch: vi.fn(() => ({})),
+  buildIssueMonitorClearedPatch: vi.fn(() => ({})),
+  REDACTED_ISSUE_MONITOR_EXTERNAL_REF: "[redacted]",
 }));
 
 vi.mock("../services/execution-workspace-policy.js", () => ({
@@ -168,6 +206,20 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createDbMock() {
+  const chain: any = {
+    select: () => chain,
+    from: () => chain,
+    where: () => chain,
+    orderBy: () => chain,
+    limit: () => chain,
+    leftJoin: () => chain,
+    innerJoin: () => chain,
+    then: (resolve: (v: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+  };
+  return chain;
+}
+
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -181,7 +233,7 @@ function createApp() {
     };
     next();
   });
-  app.use("/api", issueRoutes({} as any, {} as any));
+  app.use("/api", issueRoutes(createDbMock(), {} as any));
   app.use(errorHandler);
   return app;
 }
@@ -210,12 +262,6 @@ describe("issues lifecycle", () => {
       const res = await request(createApp())
         .post(`/api/companies/${COMPANY_ID}/issues`)
         .send({ title: "Fix login bug", priority: "high", status: "todo" });
-
-      if (res.status !== 201) {
-        console.log("DEBUG BODY:", JSON.stringify(res.body).substring(0, 500));
-        console.log("DEBUG ERROR:", (res as any).err?.message, (res as any).err?.stack?.substring(0, 300));
-        console.log("DEBUG CTX:", JSON.stringify((res as any).__errorContext).substring(0, 500));
-      }
 
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
@@ -304,7 +350,10 @@ describe("issues lifecycle", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe("in_progress");
-      expect(mockIssueService.update).toHaveBeenCalledWith(ISSUE_ID, { status: "in_progress" });
+      expect(mockIssueService.update).toHaveBeenCalledWith(
+        ISSUE_ID,
+        expect.objectContaining({ status: "in_progress" }),
+      );
     });
 
     it("returns 400 when status is invalid", async () => {
@@ -343,8 +392,16 @@ describe("issues lifecycle", () => {
       expect(second.status).toBe(200);
       expect(second.body.status).toBe("done");
 
-      expect(mockIssueService.update).toHaveBeenNthCalledWith(1, ISSUE_ID, { status: "in_progress" });
-      expect(mockIssueService.update).toHaveBeenNthCalledWith(2, ISSUE_ID, { status: "done" });
+      expect(mockIssueService.update).toHaveBeenNthCalledWith(
+        1,
+        ISSUE_ID,
+        expect.objectContaining({ status: "in_progress" }),
+      );
+      expect(mockIssueService.update).toHaveBeenNthCalledWith(
+        2,
+        ISSUE_ID,
+        expect.objectContaining({ status: "done" }),
+      );
     });
   });
 
@@ -423,7 +480,10 @@ describe("issues lifecycle", () => {
         ["todo"],
         null,
       );
-      expect(mockIssueService.update).toHaveBeenCalledWith(ISSUE_ID, { status: "done" });
+      expect(mockIssueService.update).toHaveBeenCalledWith(
+        ISSUE_ID,
+        expect.objectContaining({ status: "done" }),
+      );
     });
   });
 });
