@@ -85,7 +85,9 @@ vi.mock("../services/index.js", () => ({
   projectService: () => mockProjectService,
   routineService: () => mockRoutineService,
   workProductService: () => mockWorkProductService,
-  companyService: () => ({}),
+  companyService: () => ({
+    getById: vi.fn(async () => null),
+  }),
   companySearchService: () => ({}),
   issueRecoveryActionService: () => ({}),
   issueThreadInteractionService: () => ({}),
@@ -106,6 +108,38 @@ vi.mock("../services/issue-assignment-wakeup.js", () => ({
 
 vi.mock("../services/outbound-webhook.js", () => ({
   notifyAgent: vi.fn(async () => undefined),
+}));
+
+vi.mock("../services/execution-workspaces.js", () => ({
+  executionWorkspaceService: () => ({}),
+}));
+
+vi.mock("../services/feedback.js", () => ({
+  feedbackService: () => ({}),
+}));
+
+vi.mock("../services/instance-settings.js", () => ({
+  instanceSettingsService: () => ({}),
+}));
+
+vi.mock("../services/environments.js", () => ({
+  environmentService: () => ({}),
+}));
+
+vi.mock("../services/company-search-rate-limit.js", () => ({
+  createCompanySearchRateLimiter: () => ({
+    consume: () => ({ allowed: true, remaining: 100 }),
+  }),
+  recordCompanySearchRequest: vi.fn(async () => undefined),
+}));
+
+vi.mock("../services/issue-execution-policy.js", () => ({
+  getIssueExecutionPolicy: vi.fn(async () => null),
+  resolveExecutionWorkspaceForIssue: vi.fn(async () => null),
+}));
+
+vi.mock("../services/execution-workspace-policy.js", () => ({
+  parseIssueExecutionWorkspaceSettings: vi.fn(() => ({})),
 }));
 
 function makeIssue(overrides: Record<string, unknown> = {}) {
@@ -176,6 +210,12 @@ describe("issues lifecycle", () => {
       const res = await request(createApp())
         .post(`/api/companies/${COMPANY_ID}/issues`)
         .send({ title: "Fix login bug", priority: "high", status: "todo" });
+
+      if (res.status !== 201) {
+        console.log("DEBUG BODY:", JSON.stringify(res.body).substring(0, 500));
+        console.log("DEBUG ERROR:", (res as any).err?.message, (res as any).err?.stack?.substring(0, 300));
+        console.log("DEBUG CTX:", JSON.stringify((res as any).__errorContext).substring(0, 500));
+      }
 
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
