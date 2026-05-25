@@ -81,7 +81,6 @@ export { sprints, sprintStories, stories } from "./sprints.js";
 export { templates } from "./templates.js";
 export { assignmentRules } from "./assignment_rules.js";
 export { localLlmSettings } from "./local_llm_settings.js";
-export { assignmentRules } from "./assignment_rules.js";
 export type { RuleConditions, RuleAction } from "./assignment_rules.js";
 export {
   aiReviewQueue,
