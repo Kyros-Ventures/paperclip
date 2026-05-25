@@ -8,7 +8,7 @@ import {
 import { badRequest } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import { assertBoardOrgAccess } from "./authz.js";
-import { localLlmSettingsService } from "../services/local-llm-settings.js";
+import { localLlmSettingsService } from "../services/index.js";
 
 interface OllamaModel {
   name: string;

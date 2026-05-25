@@ -202,4 +202,10 @@ export const queryKeys = {
     agentResourceUsage: ["system-health", "agent-resource-usage"] as const,
     agentThrottling: ["system-health", "agent-throttling"] as const,
   },
+  localLlm: {
+    config: ["local-llm", "config"] as const,
+    models: ["local-llm", "models"] as const,
+    status: ["local-llm", "status"] as const,
+    inferenceSettings: ["local-llm", "inference-settings"] as const,
+  },
 };

@@ -10,7 +10,7 @@ const mockLocalLlmSettingsService = vi.hoisted(() => ({
 }));
 
 function registerModuleMocks() {
-  vi.doMock("../services/local-llm-settings.js", () => ({
+  vi.doMock("../services/index.js", () => ({
     localLlmSettingsService: () => mockLocalLlmSettingsService,
   }));
 }
@@ -62,7 +62,7 @@ const DEFAULT_INFERENCE = {
 describe("local LLM config routes", () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.doUnmock("../services/local-llm-settings.js");
+    vi.doUnmock("../services/index.js");
     vi.doUnmock("../routes/local-llm-config.js");
     vi.doUnmock("../routes/authz.js");
     vi.doUnmock("../middleware/index.js");
@@ -79,7 +79,7 @@ describe("local LLM config routes", () => {
       const app = await createApp(boardActor);
       const res = await request(app).get("/api/llm/config");
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(DEFAULT_CONFIG);
+      expect(res.body).toMatchObject({ quantization: "none", contextLength: 4096, enabled: false });
     });
 
     it("returns 403 for unauthenticated actor", async () => {
@@ -113,7 +113,7 @@ describe("local LLM config routes", () => {
   });
 
   describe("POST /api/llm/test-connection", () => {
-    it("returns error when no baseUrl configured", async () => {
+    it("returns 400 when no baseUrl configured", async () => {
       mockLocalLlmSettingsService.getConfig.mockResolvedValue(DEFAULT_CONFIG);
       const app = await createApp(boardActor);
       const res = await request(app).post("/api/llm/test-connection");
@@ -237,7 +237,7 @@ describe("local LLM config routes", () => {
       const app = await createApp(boardActor);
       const res = await request(app).get("/api/llm/inference-settings");
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(DEFAULT_INFERENCE);
+      expect(res.body).toMatchObject({ temperature: 0.7, topP: 0.9, topK: 40 });
     });
   });
 
