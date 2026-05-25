@@ -32,6 +32,8 @@ import { NotificationsCenter } from "./pages/NotificationsCenter";
 import { JarvisIntegrationStatus } from "./pages/JarvisIntegrationStatus";
 import { EstimationEngine } from "./pages/EstimationEngine";
 import { AssignmentEngine } from "./pages/AssignmentEngine";
+import { GitHubIntegration } from "./pages/GitHubIntegration";
+import { LocalLLMConfiguration } from "./pages/LocalLLMConfiguration";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanyEnvironments } from "./pages/CompanyEnvironments";
@@ -141,6 +143,8 @@ function boardRoutes() {
       <Route path="jarvis-integration" element={<JarvisIntegrationStatus />} />
       <Route path="estimation" element={<EstimationEngine />} />
       <Route path="assignment" element={<AssignmentEngine />} />
+      <Route path="github-integration" element={<GitHubIntegration />} />
+      <Route path="local-llm" element={<LocalLLMConfiguration />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
