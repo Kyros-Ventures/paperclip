@@ -4230,6 +4230,10 @@ export function issueService(db: Db) {
           .where(eq(companies.id, companyId))
           .returning({ issueCounter: companies.issueCounter, issuePrefix: companies.issuePrefix });
 
+        if (!company) {
+          throw new Error(`Company not found: ${companyId}`);
+        }
+
         const issueNumber = company.issueCounter;
         const identifier = `${company.issuePrefix}-${issueNumber}`;
 
