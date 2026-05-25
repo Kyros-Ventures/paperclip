@@ -102,6 +102,7 @@ vi.mock("../services/index.js", () => ({
   secretService: () => mockSecretService,
   syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),
   workspaceOperationService: () => mockWorkspaceOperationService,
+  companyService: () => ({}),
 }));
 
 function createDbStub(opts: { countResult?: number; companyExists?: boolean } = {}) {

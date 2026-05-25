@@ -85,6 +85,11 @@ vi.mock("../services/index.js", () => ({
   projectService: () => mockProjectService,
   routineService: () => mockRoutineService,
   workProductService: () => mockWorkProductService,
+  companyService: () => ({}),
+  companySearchService: () => ({}),
+  issueRecoveryActionService: () => ({}),
+  issueThreadInteractionService: () => ({}),
+  issueReferenceService: () => ({}),
 }));
 
 vi.mock("../services/workflow.js", () => ({

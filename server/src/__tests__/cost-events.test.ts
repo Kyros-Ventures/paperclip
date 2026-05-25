@@ -63,6 +63,7 @@ vi.mock("../services/index.js", () => ({
   agentService: () => mockAgentService,
   heartbeatService: () => mockHeartbeatService,
   logActivity: mockLogActivity,
+  issueService: () => ({}),
 }));
 
 vi.mock("../services/quota-windows.js", () => ({
