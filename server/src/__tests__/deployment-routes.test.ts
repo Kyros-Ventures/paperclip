@@ -13,7 +13,7 @@ const mockDeploymentService = vi.hoisted(() => ({
   listDeployments: vi.fn(),
 }));
 
-vi.mock("../services/deploymentService.js", () => mockDeploymentService);
+vi.mock("../services/deploymentService.js", () => ({ deploymentService: mockDeploymentService }));
 
 function createApp() {
   const app = express();
