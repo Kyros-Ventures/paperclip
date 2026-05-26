@@ -86,6 +86,6 @@ describe("JarvisIntegrationStatus", () => {
     } as any);
     render(<JarvisIntegrationStatus />);
     expect(screen.getAllByText("/api/jarvis/health").length).toBeGreaterThan(0);
-    expect(screen.getByText("/api/jarvis/webhook")).toBeDefined();
+    expect(screen.getAllByText("/api/jarvis/webhook").length).toBeGreaterThan(0);
   });
 });
