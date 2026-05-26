@@ -82,7 +82,7 @@ export function deploymentRoutes(_db: Db) {
     "/companies/:companyId/deployments/:deployId",
     (req: Request, res: Response) => {
       const deployment = deploymentService.getDeployment(
-        req.params.deployId,
+        req.params.deployId as string,
       );
       if (!deployment) {
         return res.status(404).json({ error: "Deployment not found" });
