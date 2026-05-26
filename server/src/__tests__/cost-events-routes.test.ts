@@ -21,6 +21,10 @@ const mockAgentService = vi.hoisted(() => ({
   getById: vi.fn(),
   update: vi.fn(),
 }));
+const mockIssueService = vi.hoisted(() => ({
+  getByIdentifier: vi.fn(),
+  getById: vi.fn(),
+}));
 const mockHeartbeatService = vi.hoisted(() => ({
   cancelBudgetScopeWork: vi.fn(),
 }));
@@ -56,6 +60,7 @@ vi.mock("../services/index.js", () => ({
   financeService: () => mockFinanceService,
   companyService: () => mockCompanyService,
   agentService: () => mockAgentService,
+  issueService: () => mockIssueService,
   heartbeatService: () => mockHeartbeatService,
   logActivity: mockLogActivity,
 }));
@@ -130,6 +135,8 @@ beforeEach(() => {
     spentMonthlyCents: 0,
   });
   mockLogActivity.mockResolvedValue(undefined);
+  mockIssueService.getByIdentifier.mockReset();
+  mockIssueService.getById.mockReset();
 });
 
 describe("cost events: POST /companies/:id/cost-events", () => {
