@@ -137,6 +137,14 @@ beforeEach(() => {
   mockLogActivity.mockResolvedValue(undefined);
   mockIssueService.getByIdentifier.mockReset();
   mockIssueService.getById.mockReset();
+  mockCostService.createEvent.mockClear();
+  mockCostService.summary.mockClear();
+  mockCostService.byAgent.mockClear();
+  mockCostService.byAgentModel.mockClear();
+  mockCostService.byProvider.mockClear();
+  mockCostService.byBiller.mockClear();
+  mockCostService.windowSpend.mockClear();
+  mockCostService.byProject.mockClear();
 });
 
 describe("cost events: POST /companies/:id/cost-events", () => {
