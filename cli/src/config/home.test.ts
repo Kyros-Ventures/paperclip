@@ -44,10 +44,10 @@ describe("resolvePaperclipInstanceId", () => {
 
   it("throws on invalid characters", () => {
     expect(() => resolvePaperclipInstanceId("bad id!")).toThrow(
-      "Invalid instance id",
+      /Invalid PAPERCLIP_INSTANCE_ID/,
     );
     expect(() => resolvePaperclipInstanceId("path/traversal")).toThrow(
-      "Invalid instance id",
+      /Invalid PAPERCLIP_INSTANCE_ID/,
     );
   });
 
